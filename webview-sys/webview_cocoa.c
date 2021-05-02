@@ -39,7 +39,7 @@ WEBVIEW_API void* webview_get_user_data(webview_t w) {
 }
 
 WEBVIEW_API webview_t webview_new(
-  const char* title, const char* url, 
+  const char* title, const char* url,
   int width, int height, int resizable, int debug, int frameless, int visible, int min_width, int min_height, int hide_instead_of_close,
   webview_external_invoke_cb_t external_invoke_cb, void* userdata) {
 	struct cocoa_webview* wv = (struct cocoa_webview*)calloc(1, sizeof(*wv));
@@ -86,6 +86,7 @@ WEBVIEW_API webview_t webview_new(
 #define NSApplicationActivationPolicyRegular 0
 #define NSApplicationDefinedEvent 15
 #define NSWindowStyleMaskBorderless 0
+#define NSPNGFileType 4
 
 static id get_nsstring(const char *c_str) {
   return objc_msgSend((id)objc_getClass("NSString"),
@@ -133,7 +134,7 @@ static void webview_window_will_close(id self, SEL cmd, id notification) {
   event on the application allowing the `webview_loop` to continue
   its current iteration.
   ***/
-  objc_msgSend(app, sel_registerName("postEvent:atStart:"), event, 
+  objc_msgSend(app, sel_registerName("postEvent:atStart:"), event,
                     objc_msgSend((id)objc_getClass("NSDate"),
                       sel_registerName("distantPast")));
 }
@@ -246,6 +247,57 @@ static void run_alert_panel(id self, SEL cmd, id webView, id message, id frame,
   completionHandler();
 }
 
+static void take_snapshot(id self, SEL cmd) {
+  struct cocoa_webview *wv =
+      (struct cocoa_webview *)objc_getAssociatedObject(self, "webview");
+  CGRect webview_frame = ((CGRect (*)(id, SEL))objc_msgSend_stret)(wv->priv.webview, sel_registerName("frame"));
+  id snapshot_configuration = ((id(*)(id, SEL))objc_msgSend)((id)objc_getClass("WKSnapshotConfiguration"), sel_registerName("new"));
+  ((void (*)(id, SEL, CGRect))objc_msgSend)(snapshot_configuration, sel_registerName("setRect:"), webview_frame);
+  ((void (*)(id, SEL, BOOL))objc_msgSend)(snapshot_configuration, sel_registerName("setAfterScreenUpdates:"), 0);
+
+  id block = (id)(^(id img, CGError err) {
+    if (!err) {
+      // convert image type PNG
+      id data = ((id(*)(id, SEL))objc_msgSend)(img, sel_registerName("TIFFRepresentation"));
+      id bitmapImageRep = ((id(*)(id, SEL, id))objc_msgSend)((id)objc_getClass("NSBitmapImageRep"), sel_registerName("imageRepWithData:"), data);
+      id properties = ((id(*)(id, SEL, id, id))objc_msgSend)(
+          (id)objc_getClass("NSDictionary"), sel_registerName("dictionaryWithObject:forKey:"),
+          ((id(*)(id, SEL, BOOL))objc_msgSend)((id)objc_getClass("NSNumber"), sel_registerName("numberWithBool:"), 1),
+          get_nsstring("NSImageInterlaced"));
+      id data_ = ((id(*)(id, SEL, unsigned long, id))objc_msgSend)(bitmapImageRep,
+          sel_registerName("representationUsingType:properties:"),
+          NSPNGFileType,
+          properties);
+
+      // prepare image file name
+      id now = ((id(*)(id, SEL))objc_msgSend)((id)objc_getClass("NSDate"), sel_registerName("date"));
+      id formatter = ((id(*)(id, SEL))objc_msgSend)(
+          ((id(*)(id, SEL))objc_msgSend)(
+              (id)objc_getClass("NSDateFormatter"), sel_registerName("alloc")),
+              sel_registerName("init"));
+      ((void (*)(id, SEL, id))objc_msgSend)(
+          formatter, sel_registerName("setDateFormat:"), get_nsstring("YYYYMMddhhmmss"));
+      id img_file_name = ((id(*)(id, SEL, id))objc_msgSend)(
+          ((id(*)(id, SEL, id))objc_msgSend)(
+              formatter, sel_registerName("stringFromDate:"), now),
+          sel_registerName("stringByAppendingString:"),
+          get_nsstring(".png"));
+
+      ((void (*)(id, SEL))objc_msgSend)(formatter, sel_registerName("release"));
+      // save image
+      ((void (*)(id, SEL, id, BOOL))objc_msgSend)(
+          data_, sel_registerName("writeToFile:atomically:"), img_file_name, 1);
+    }
+  });
+  // take snapshot
+  ((void (*)(id, SEL, id, id))objc_msgSend)(
+      wv->priv.webview,
+      sel_registerName("takeSnapshotWithConfiguration:completionHandler:"),
+      snapshot_configuration,
+      block
+  );
+}
+
 static void download_failed(id self, SEL cmd, id download, id error) {
   printf("%s",
          (const char *)objc_msgSend(
@@ -309,7 +361,7 @@ WEBVIEW_API int webview_init(webview_t w) {
                     (IMP)download_failed, "v@:@@");
     objc_registerClassPair(__WKDownloadDelegate);
   }
-  
+
   id downloadDelegate =
       objc_msgSend((id)__WKDownloadDelegate, sel_registerName("new"));
 
@@ -378,6 +430,8 @@ WEBVIEW_API int webview_init(webview_t w) {
                         (IMP)webview_window_will_close, "v@:@");
     class_replaceMethod(__NSWindowDelegate, sel_registerName("windowShouldClose:"),
                         (IMP)webview_window_should_close, "B@:@");
+    class_addMethod(__NSWindowDelegate, sel_registerName("snapshot:"),
+                        (IMP)take_snapshot, "v@:");
     objc_registerClassPair(__NSWindowDelegate);
   }
 
@@ -475,7 +529,7 @@ WEBVIEW_API int webview_init(webview_t w) {
   if (wv->visible) {
     objc_msgSend(wv->priv.window, sel_registerName("orderFrontRegardless"));
   }
-  
+
   objc_msgSend(wv->priv.window, sel_registerName("setMinSize:"), CGSizeMake(wv->min_width, wv->min_height));
 
   objc_msgSend(objc_msgSend((id)objc_getClass("NSApplication"),
@@ -528,6 +582,13 @@ WEBVIEW_API int webview_init(webview_t w) {
 
   item =
       create_menu_item(get_nsstring("Show All"), "unhideAllApplications:", "");
+  objc_msgSend(appMenu, sel_registerName("addItem:"), item);
+
+  objc_msgSend(appMenu, sel_registerName("addItem:"),
+               objc_msgSend((id)objc_getClass("NSMenuItem"),
+                            sel_registerName("separatorItem")));
+
+  item = create_menu_item(get_nsstring("Snapshot"), "snapshot:", "");
   objc_msgSend(appMenu, sel_registerName("addItem:"), item);
 
   objc_msgSend(appMenu, sel_registerName("addItem:"),
@@ -621,7 +682,7 @@ WEBVIEW_API void webview_set_minimized(webview_t w, int minimize) {
   } else {
     objc_msgSend(wv->priv.window, sel_registerName("deminiaturize:"), NULL);
   }
-  
+
 }
 
 WEBVIEW_API void webview_set_visible(webview_t w, int visible) {
