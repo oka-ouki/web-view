@@ -259,13 +259,67 @@ unsafe extern "C" fn webview_new(
 }
 
 extern "C" fn webview_context_menu_cb(
-    _webview: *mut WebKitWebView,
-    _default_menu: *mut GtkWidget,
+    webview: *mut WebKitWebView,
+    default_menu: *mut GtkWidget,
     _hit_test_result: *mut WebKitHitTestResult,
     _triggered_with_keyboard: gboolean,
     _userdata: gboolean,
 ) -> gboolean {
-    GTRUE
+    unsafe {
+        webkit_context_menu_append(
+            default_menu as *mut WebKitContextMenu,
+            webkit_context_menu_item_new_separator(),
+        );
+        webkit_context_menu_append(
+            default_menu as *mut WebKitContextMenu,
+            webkit_context_menu_item_new_from_stock_action(WEBKIT_CONTEXT_MENU_ACTION_SELECT_ALL),
+        );
+        webkit_context_menu_append(
+            default_menu as *mut WebKitContextMenu,
+            webkit_context_menu_item_new_from_stock_action(WEBKIT_CONTEXT_MENU_ACTION_COPY),
+        );
+        let action = gio_sys::g_simple_action_new(
+            CStr::from_bytes_with_nul_unchecked(b"clearalldata\0").as_ptr(),
+            ptr::null_mut(),
+        );
+        g_signal_connect_data(
+            mem::transmute(action),
+            CStr::from_bytes_with_nul_unchecked(b"activate\0").as_ptr(),
+            Some(mem::transmute(clear_all_data_activate_cb as *const ())),
+            mem::transmute(webview),
+            None,
+            0,
+        );
+        webkit_context_menu_append(
+            default_menu as *mut webkit2gtk_sys::WebKitContextMenu,
+            webkit_context_menu_item_new_from_gaction(
+                action as *mut gio_sys::GAction,
+                CStr::from_bytes_with_nul_unchecked(b"Clear All Data\0").as_ptr(),
+                ptr::null_mut(),
+            ),
+        );
+    }
+    GFALSE
+}
+
+extern "C" fn clear_all_data_activate_cb(
+    _action: *mut gio_sys::GAction,
+    _parameter: *mut GVariant,
+    arg: gpointer,
+) {
+    unsafe {
+        let manager: *mut WebKitWebsiteDataManager = webkit_web_context_get_website_data_manager(
+            webkit_web_view_get_context(arg as *mut webkit2gtk_sys::WebKitWebView),
+        );
+        webkit_website_data_manager_clear(
+            manager,
+            WEBKIT_WEBSITE_DATA_ALL,
+            0,
+            ptr::null_mut(),
+            None,
+            ptr::null_mut(),
+        );
+    }
 }
 
 unsafe extern "C" fn external_message_received_cb(

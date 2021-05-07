@@ -24,7 +24,7 @@ javascriptcore-rs-sys = "0.2"
 gtk-sys = "0.10"
 glib-sys = "0.10"
 gobject-sys = "0.10"
-webkit2gtk-sys = { version = "0.12.0", features = ["v2_8"] }
+webkit2gtk-sys = { version = "0.12.0", features = ["v2_8", "v2_16", "v2_18"] }
 gdk-sys = "0.10"
 gio-sys = "0.10"
 libc = "0.2"
