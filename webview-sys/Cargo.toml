@@ -28,6 +28,8 @@ webkit2gtk-sys = { version = "0.12.0", features = ["v2_8", "v2_16", "v2_18"] }
 gdk-sys = "0.10"
 gio-sys = "0.10"
 libc = "0.2"
+gdk-pixbuf-sys = "0.10"
+chrono = "0.4.19"
 
 [build-dependencies]
 cc = "1"

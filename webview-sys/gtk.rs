@@ -1,13 +1,18 @@
 #![cfg(all(target_family = "unix", not(target_os = "macos")))]
 
-use gdk_sys::{gdk_threads_add_idle, GdkGeometry, GdkRGBA, GDK_HINT_MIN_SIZE};
+use chrono::Utc;
+use gdk_pixbuf_sys::gdk_pixbuf_save;
+use gdk_sys::{
+    gdk_pixbuf_get_from_window, gdk_threads_add_idle, gdk_window_get_height, gdk_window_get_width,
+    GdkGeometry, GdkRGBA, GDK_HINT_MIN_SIZE,
+};
 use gio_sys::GAsyncResult;
 use glib_sys::*;
-use gobject_sys::{g_signal_connect_data, GObject};
+use gobject_sys::{g_object_unref, g_signal_connect_data, GObject};
 use gtk_sys::*;
 use javascriptcore_sys::*;
 use libc::{c_char, c_double, c_int, c_void};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::mem;
 use std::ptr;
 use webkit2gtk_sys::*;
@@ -298,6 +303,26 @@ extern "C" fn webview_context_menu_cb(
                 ptr::null_mut(),
             ),
         );
+        let action2 = gio_sys::g_simple_action_new(
+            CStr::from_bytes_with_nul_unchecked(b"screenshot\0").as_ptr(),
+            ptr::null_mut(),
+        );
+        g_signal_connect_data(
+            mem::transmute(action2),
+            CStr::from_bytes_with_nul_unchecked(b"activate\0").as_ptr(),
+            Some(mem::transmute(screenshot_activate_cb as *const ())),
+            mem::transmute(webview),
+            None,
+            0,
+        );
+        webkit_context_menu_append(
+            default_menu as *mut webkit2gtk_sys::WebKitContextMenu,
+            webkit_context_menu_item_new_from_gaction(
+                action2 as *mut gio_sys::GAction,
+                CStr::from_bytes_with_nul_unchecked(b"Screenshot\0").as_ptr(),
+                ptr::null_mut(),
+            ),
+        );
     }
     GFALSE
 }
@@ -319,6 +344,33 @@ extern "C" fn clear_all_data_activate_cb(
             None,
             ptr::null_mut(),
         );
+    }
+}
+
+extern "C" fn screenshot_activate_cb(
+    _action: *mut gio_sys::GAction,
+    _parameter: *mut GVariant,
+    arg: gpointer,
+) {
+    let file_name = Utc::now().format("%Y%m%d%H%M%S.png").to_string();
+    let c_str = CString::new(file_name).unwrap();
+    unsafe {
+        let gdk_window = gtk_widget_get_window(arg as *mut gtk_sys::GtkWidget);
+        let pixbuf = gdk_pixbuf_get_from_window(
+            gdk_window,
+            0,
+            0,
+            gdk_window_get_width(gdk_window),
+            gdk_window_get_height(gdk_window),
+        );
+        println!("{}", c_str.to_str().unwrap());
+        gdk_pixbuf_save(
+            pixbuf,
+            c_str.as_ptr(),
+            CStr::from_bytes_with_nul_unchecked(b"png\0").as_ptr(),
+            &mut ptr::null_mut::<GError>(),
+        );
+        g_object_unref(pixbuf as *mut GObject);
     }
 }
 
