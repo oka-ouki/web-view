@@ -298,6 +298,22 @@ static void take_snapshot(id self, SEL cmd) {
   );
 }
 
+static void remove_data(id self, SEL cmd) {
+  id remove_data_types = ((id(*)(id, SEL))objc_msgSend)(
+      (id)objc_getClass("WKWebsiteDataStore"), sel_registerName("allWebsiteDataTypes"));
+  id date_from = ((id(*)(id, SEL, double))objc_msgSend)(
+      (id)objc_getClass("NSDate"), sel_registerName("dateWithTimeIntervalSince1970:"), 0);
+  id block = (id)(^() {
+    // do something
+  });
+  ((void (*)(id, SEL, id, id, id))objc_msgSend)(
+      ((id(*)(id, SEL))objc_msgSend)((id)objc_getClass("WKWebsiteDataStore"), sel_registerName("defaultDataStore")),
+      sel_registerName("removeDataOfTypes:modifiedSince:completionHandler:"),
+      remove_data_types,
+      date_from,
+      block);
+}
+
 static void download_failed(id self, SEL cmd, id download, id error) {
   printf("%s",
          (const char *)objc_msgSend(
@@ -432,6 +448,8 @@ WEBVIEW_API int webview_init(webview_t w) {
                         (IMP)webview_window_should_close, "B@:@");
     class_addMethod(__NSWindowDelegate, sel_registerName("snapshot:"),
                         (IMP)take_snapshot, "v@:");
+    class_addMethod(__NSWindowDelegate, sel_registerName("removedata:"),
+                        (IMP)remove_data, "v@:");
     objc_registerClassPair(__NSWindowDelegate);
   }
 
@@ -589,6 +607,9 @@ WEBVIEW_API int webview_init(webview_t w) {
                             sel_registerName("separatorItem")));
 
   item = create_menu_item(get_nsstring("Snapshot"), "snapshot:", "");
+  objc_msgSend(appMenu, sel_registerName("addItem:"), item);
+
+  item = create_menu_item(get_nsstring("Remove Data"), "removedata:", "");
   objc_msgSend(appMenu, sel_registerName("addItem:"), item);
 
   objc_msgSend(appMenu, sel_registerName("addItem:"),
