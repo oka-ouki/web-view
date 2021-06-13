@@ -42,6 +42,7 @@ struct WebView {
     js_busy: c_int,
     should_exit: c_int,
     userdata: *mut c_void,
+    link_url: *mut c_char,
 }
 
 #[no_mangle]
@@ -129,6 +130,7 @@ unsafe extern "C" fn webview_new(
         js_busy: 0,
         should_exit: 0,
         userdata,
+        link_url: ptr::null_mut(),
     });
 
     let w = Box::into_raw(w);
@@ -266,9 +268,9 @@ unsafe extern "C" fn webview_new(
 extern "C" fn webview_context_menu_cb(
     webview: *mut WebKitWebView,
     default_menu: *mut GtkWidget,
-    _hit_test_result: *mut WebKitHitTestResult,
-    _triggered_with_keyboard: gboolean,
-    _userdata: gboolean,
+    _events: gpointer,
+    hit_test_result: *mut WebKitHitTestResult,
+    userdata: gpointer,
 ) -> gboolean {
     unsafe {
         webkit_context_menu_append(
@@ -323,6 +325,34 @@ extern "C" fn webview_context_menu_cb(
                 ptr::null_mut(),
             ),
         );
+        if webkit_hit_test_result_context_is_link(hit_test_result) > 0 {
+            let w: *mut WebView = mem::transmute(userdata);
+            (*w).link_url = mem::transmute(webkit_hit_test_result_get_link_uri(hit_test_result));
+            webkit_context_menu_append(
+                default_menu as *mut WebKitContextMenu,
+                webkit_context_menu_item_new_separator(),
+            );
+            let action = gio_sys::g_simple_action_new(
+                CStr::from_bytes_with_nul_unchecked(b"openinanotherwindow\0").as_ptr(),
+                ptr::null_mut(),
+            );
+            g_signal_connect_data(
+                mem::transmute(action),
+                CStr::from_bytes_with_nul_unchecked(b"activate\0").as_ptr(),
+                Some(mem::transmute(open_url_in_another_window_activate_cb as *const ())),
+                mem::transmute(w),
+                None,
+                0,
+            );
+            webkit_context_menu_append(
+                default_menu as *mut webkit2gtk_sys::WebKitContextMenu,
+                webkit_context_menu_item_new_from_gaction(
+                    action as *mut gio_sys::GAction,
+                    CStr::from_bytes_with_nul_unchecked(b"Open Link in Another Window\0").as_ptr(),
+                    ptr::null_mut(),
+                ),
+            );
+        }
     }
     GFALSE
 }
@@ -374,6 +404,24 @@ extern "C" fn screenshot_activate_cb(
     }
 }
 
+extern "C" fn open_url_in_another_window_activate_cb(
+    _action: *mut gio_sys::GAction,
+    _parameter: *mut GVariant,
+    arg: *mut gpointer,
+) {
+    unsafe {
+        let webview: *mut WebView = mem::transmute(arg);
+        let format = CString::new("window.webkit.messageHandlers.external.postMessage(1);").unwrap();
+        webkit_web_view_run_javascript(
+            mem::transmute((*webview).webview),
+            format.as_ptr(),
+            ptr::null_mut(),
+            None,
+            ptr::null_mut(),
+        );
+    }
+}
+
 unsafe extern "C" fn external_message_received_cb(
     _m: *mut WebKitUserContentManager,
     r: *mut WebKitJavascriptResult,
@@ -393,6 +441,11 @@ unsafe extern "C" fn external_message_received_cb(
 #[no_mangle]
 unsafe extern "C" fn webview_get_user_data(webview: *mut WebView) -> *mut c_void {
     (*webview).userdata
+}
+
+#[no_mangle]
+unsafe extern "C" fn webview_get_link_url(webview: *mut WebView) -> *mut c_char {
+    (*webview).link_url
 }
 
 #[no_mangle]

@@ -419,6 +419,28 @@ impl<'a, T> WebView<'a, T> {
         &mut self.user_data_wrapper_mut().inner
     }
 
+    fn link_url_wrapper_ptr(&self) -> *mut c_char {
+        unsafe { webview_get_link_url(self.inner.unwrap()) as *mut c_char }
+    }
+
+    fn link_url_wrapper(&self) -> &c_char {
+        unsafe { &(*self.link_url_wrapper_ptr()) }
+    }
+
+    fn link_url_wrapper_mut(&mut self) -> &mut c_char {
+        unsafe { &mut (*self.link_url_wrapper_ptr()) }
+    }
+
+    /// Borrows the link url immutably.
+    pub fn link_url(&self) -> &c_char {
+        &self.link_url_wrapper()
+    }
+
+    /// Borrows the link url mutably.
+    pub fn link_url_mut(&mut self) -> &mut c_char {
+        self.link_url_wrapper_mut()
+    }
+
     /// Window handle (Windows only)
     pub fn window_handle(&self) -> *mut c_void {
         unsafe { webview_get_window_handle(self.inner.unwrap()) as _ }

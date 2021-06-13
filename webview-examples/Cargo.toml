@@ -12,6 +12,7 @@ publish = false
 
 [dependencies]
 web-view = { path = "..", version = "0.7.3" }
+libc = "0.2"
 
 [features]
 edge = ["web-view/edge"]

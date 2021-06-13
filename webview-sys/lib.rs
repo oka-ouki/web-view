@@ -35,6 +35,7 @@ extern "C" {
     pub fn webview_loop(this: *mut CWebView, blocking: c_int) -> c_int;
     pub fn webview_exit(this: *mut CWebView);
     pub fn webview_get_user_data(this: *mut CWebView) -> *mut c_void;
+    pub fn webview_get_link_url(this: *mut CWebView) -> *mut c_char;
     pub fn webview_get_window_handle(this: *mut CWebView) -> *mut c_void;
     pub fn webview_dispatch(this: *mut CWebView, f: Option<ErasedDispatchFn>, arg: *mut c_void);
     pub fn webview_eval(this: *mut CWebView, js: *const c_char) -> c_int;
