@@ -15,8 +15,12 @@ fn main() {
         .resizable(true)
         .debug(false)
         .user_data(0)
-        .invoke_handler(|webview, _arg| {
-            *webview.user_data_mut() = 1;
+        .invoke_handler(|webview, arg| {
+            match arg {
+                "2" => *webview.user_data_mut() = 2,
+                _ => *webview.user_data_mut() = 1,
+            }
+
             Ok(())
         })
         .build()
@@ -29,8 +33,12 @@ fn main() {
         .resizable(true)
         .debug(false)
         .user_data(0)
-        .invoke_handler(|webview, _arg| {
-            *webview.user_data_mut() = 1;
+        .invoke_handler(|webview, arg| {
+            match arg {
+                "2" => *webview.user_data_mut() = 2,
+                _ => *webview.user_data_mut() = 1,
+            }
+
             Ok(())
         })
         .build()
@@ -46,16 +54,35 @@ fn main() {
         if *webview1.user_data() != 0 {
             unsafe {
                 let url = CStr::from_ptr(&(*webview1.link_url()) as *const c_char).to_str().unwrap();
-                let _ = webview2.eval(&format!("{}{}{}", "window.location.href='", url, "';"));
+                if *webview1.user_data() == 2 {
+                    let _ = webview2.eval(&format!("{}{}{}", "document.documentElement.innerHTML='", format!("{}{}{}", HTML1, url, HTML2).replace('\n', ""), "';"));
+                } else {
+                    let _ = webview2.eval(&format!("{}{}{}", "window.location.href='", url, "';"));
+                }
             }
             *webview1.user_data_mut() = 0;
         }
         if *webview2.user_data() != 0 {
             unsafe {
                 let url = CStr::from_ptr(&(*webview2.link_url()) as *const c_char).to_str().unwrap();
-                let _ = webview1.eval(&format!("{}{}{}", "window.location.href='", url, "';"));
+                if *webview2.user_data() == 2 {
+                    let _ = webview1.eval(&format!("{}{}{}", "document.documentElement.innerHTML='", format!("{}{}{}", HTML1, url, HTML2).replace('\n', ""), "';"));
+                } else {
+                    let _ = webview1.eval(&format!("{}{}{}", "window.location.href='", url, "';"));
+                }
             }
             *webview2.user_data_mut() = 0;
         }
     }
 }
+
+const HTML1: &str = r#"
+<body style="background-color: black; margin: 0; padding: 0;">
+  <img src="
+"#;
+
+const HTML2: &str = r#"
+" style="width: 100vw; height: 100vh; object-fit: contain;">
+  </body>
+</html>
+"#;

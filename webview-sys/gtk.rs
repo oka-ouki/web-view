@@ -353,6 +353,30 @@ extern "C" fn webview_context_menu_cb(
                 ),
             );
         }
+        if webkit_hit_test_result_context_is_image(hit_test_result) > 0 {
+            let w: *mut WebView = mem::transmute(userdata);
+            (*w).link_url = mem::transmute(webkit_hit_test_result_get_image_uri(hit_test_result));
+            let action = gio_sys::g_simple_action_new(
+                CStr::from_bytes_with_nul_unchecked(b"showinanotherwindow\0").as_ptr(),
+                ptr::null_mut(),
+            );
+            g_signal_connect_data(
+                mem::transmute(action),
+                CStr::from_bytes_with_nul_unchecked(b"activate\0").as_ptr(),
+                Some(mem::transmute(show_image_in_another_window_activate_cb as *const ())),
+                mem::transmute(w),
+                None,
+                0,
+            );
+            webkit_context_menu_append(
+                default_menu as *mut webkit2gtk_sys::WebKitContextMenu,
+                webkit_context_menu_item_new_from_gaction(
+                    action as *mut gio_sys::GAction,
+                    CStr::from_bytes_with_nul_unchecked(b"Show Image in Another Window\0").as_ptr(),
+                    ptr::null_mut(),
+                ),
+            );
+        }
     }
     GFALSE
 }
@@ -412,6 +436,24 @@ extern "C" fn open_url_in_another_window_activate_cb(
     unsafe {
         let webview: *mut WebView = mem::transmute(arg);
         let format = CString::new("window.webkit.messageHandlers.external.postMessage(1);").unwrap();
+        webkit_web_view_run_javascript(
+            mem::transmute((*webview).webview),
+            format.as_ptr(),
+            ptr::null_mut(),
+            None,
+            ptr::null_mut(),
+        );
+    }
+}
+
+extern "C" fn show_image_in_another_window_activate_cb(
+    _action: *mut gio_sys::GAction,
+    _parameter: *mut GVariant,
+    arg: *mut gpointer,
+) {
+    unsafe {
+        let webview: *mut WebView = mem::transmute(arg);
+        let format = CString::new("window.webkit.messageHandlers.external.postMessage(2);").unwrap();
         webkit_web_view_run_javascript(
             mem::transmute((*webview).webview),
             format.as_ptr(),
